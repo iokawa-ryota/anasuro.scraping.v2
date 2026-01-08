@@ -10,8 +10,11 @@ app = Flask(__name__, static_folder='.')
 app.config['JSON_AS_ASCII'] = False
 
 # 設定
-STORE_LIST_PATH = "D:/Users/Documents/python/saved_html/store_list.csv"
-SCRAPING_SCRIPT_PATH = "anasuro.py"  # スクレイピング処理メインスクリプト
+# 正式な店舗リスト（絶対パス指定）
+STORE_LIST_PATH = r"D:\Users\Documents\python\saved_html\store_list.csv"
+# 選択後に一時出力するファイル（スクレイピングスクリプト参照用）
+TEMP_STORE_LIST_PATH = "temp_store_list.csv"  # ローカルの一時ファイル
+SCRAPING_SCRIPT_PATH = "anasuro_selective.py"  # スクレイピング処理メインスクリプト
 LOG_FILE = "scraping_log.json"
 
 # 店舗リストをメモリにキャッシュ
@@ -36,14 +39,16 @@ def load_stores():
         if df is None:
             raise RuntimeError("store_list.csv の読み込みに失敗しました（encoding不一致）")
 
-        store_cache = [
-            {
-                "name": str(row.get("store_name", f"店舗{i}")),
-                "url": str(row.get("store_url", "")),
-                "directory": str(row.get("data_directory", ""))
-            }
-            for i, (_, row) in enumerate(df.iterrows())
-        ]
+        store_cache = []
+        for i, (_, row) in enumerate(df.iterrows(), start=1):
+            name = row.get("store_name") or row.get("name") or f"店舗{i}"
+            url = row.get("store_url") or row.get("url") or ""
+            directory = row.get("data_directory") or row.get("directory") or ""
+            store_cache.append({
+                "name": str(name),
+                "url": str(url),
+                "directory": str(directory)
+            })
         last_load_time = datetime.now()
         return store_cache
     except Exception as e:
@@ -93,7 +98,7 @@ def start_scraping():
             return jsonify({"error": "選択された店舗が見つかりません"}), 400
         
         # 一時的な CSV ファイルを作成（Excel対応のUTF-8 BOM付き）
-        temp_store_list = "temp_store_list.csv"
+        temp_store_list = TEMP_STORE_LIST_PATH
         selected_stores_df.to_csv(temp_store_list, index=False, encoding='utf-8-sig')
         
         # ログに記録
@@ -166,66 +171,74 @@ def format_offline():
     }
     """
     try:
-        data = request.get_json()
-        selected_store_names = data.get("stores", [])
-        
-        # 全店舗リストを読み込み
-        all_stores = load_stores()
-        
-        if selected_store_names:
-            # 選択店舗のみ
-            target_stores = [
-                store for store in all_stores 
-                if store["name"] in selected_store_names
-            ]
-        else:
-            # 全店舗対象
-            target_stores = all_stores
-        
-        if not target_stores:
-            return jsonify({"error": "店舗が見つかりません"}), 400
-        
-        print(f"[整形] {len(target_stores)} 個の店舗を処理します")
+        print("[整形] Excel 自動整形を開始します")
         
         # オフライン整形スクリプトを実行
         try:
             result = subprocess.run(
-                [sys.executable, "offline_scraping.py"],
+                [sys.executable, "offline-scraing.py"],
                 capture_output=True,
                 text=True,
                 timeout=1800  # 最大 30 分
             )
             
             output = result.stdout + "\n" + result.stderr
+            print(output)
+            
+            # 処理完了した店舗を読み込む
+            completed_stores = []  # データ更新あり
+            processed_stores = []  # 処理実行済み
+            completed_stores_path = os.path.join(os.path.dirname(__file__), "completed_stores.json")
+            if os.path.exists(completed_stores_path):
+                try:
+                    with open(completed_stores_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    # 新フォーマット対応（completed/processed分け）
+                    if isinstance(data, dict):
+                        completed_stores = data.get("completed", [])
+                        processed_stores = data.get("processed", [])
+                    else:
+                        # 旧フォーマット互換性
+                        completed_stores = data if isinstance(data, list) else []
+                    print(f"[デバッグ] データ更新あり: {completed_stores}")
+                    print(f"[デバッグ] 処理実行済み: {processed_stores}")
+                except Exception as e:
+                    print(f"[警告] completed_stores.json の読み込みに失敗: {e}")
+            else:
+                print(f"[警告] completed_stores.json が見つかりません（パス: {completed_stores_path}）")
             
             # ログに記録
             log_entry = {
                 "timestamp": datetime.now().isoformat(),
                 "action": "format_offline",
-                "selected_stores": selected_store_names if selected_store_names else "all",
-                "count": len(target_stores)
+                "completed_count": len(completed_stores),
+                "processed_count": len(processed_stores)
             }
             
             with open(LOG_FILE, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
             
             return jsonify({
-                "message": f"{len(target_stores)} 個の店舗のExcel整形を実行しました",
-                "selected_count": len(target_stores),
-                "output": output[-500:] if output else ""
+                "message": "Excel 自動整形を実行しました",
+                "output": output[-500:] if output else "",
+                "completed_stores": completed_stores,
+                "processed_stores": processed_stores
             })
         except subprocess.TimeoutExpired:
             return jsonify({
-                "message": f"{len(target_stores)} 個の店舗の整形処理を開始しました（処理中）"
+                "message": "Excel 自動整形処理を開始しました（処理中）",
+                "completed_stores": []
             }), 202
         except Exception as e:
+            print(f"[エラー] 整形処理実行エラー: {str(e)}")
             return jsonify({
-                "error": f"整形処理実行エラー: {str(e)}"
+                "error": f"整形処理実行エラー: {str(e)}",
+                "completed_stores": []
             }), 500
         
     except Exception as e:
         print(f"[エラー] API エラー: {e}")
-        return jsonify({"error": f"処理エラー: {str(e)}"}), 500
+        return jsonify({"error": f"処理エラー: {str(e)}", "completed_stores": []}), 500
 
 @app.route('/api/stores/reorder', methods=['POST'])
 def reorder_stores():
