@@ -16,18 +16,18 @@ from pathlib import Path
 
 def check_python_version():
     """Python バージョンを確認"""
-    print("🔍 Python バージョンを確認中...")
+    print("[CHECK] Python version...")
     version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    print(f"✓ Python {version}")
+    print(f"[OK] Python {version}")
     
     if sys.version_info < (3, 8):
-        print("⚠️  Python 3.8 以上が推奨されます")
+        print("[WARN] Python 3.8 or newer is recommended")
         return False
     return True
 
 def check_packages():
     """必要なパッケージをインストール"""
-    print("\n📦 パッケージを確認中...")
+    print("\n[CHECK] Python packages...")
     
     required_packages = {
         'flask': 'Flask',
@@ -43,13 +43,13 @@ def check_packages():
     for import_name, package_name in required_packages.items():
         try:
             __import__(import_name)
-            print(f"✓ {package_name} はインストール済み")
+            print(f"[OK] {package_name} is installed")
         except ImportError:
-            print(f"✗ {package_name} が見つかりません")
+            print(f"[MISSING] {package_name}")
             missing_packages.append(package_name)
     
     if missing_packages:
-        print(f"\n🔧 不足しているパッケージをインストール中...")
+        print(f"\n[INSTALL] Installing missing packages...")
         print(f"   {', '.join(missing_packages)}")
         
         try:
@@ -57,23 +57,23 @@ def check_packages():
                 sys.executable, '-m', 'pip', 'install', 
                 '--upgrade'
             ] + missing_packages)
-            print("✓ インストール完了")
+            print("[OK] Installation complete")
             return True
         except subprocess.CalledProcessError as e:
-            print(f"✗ インストール失敗: {e}")
+            print(f"[ERROR] Installation failed: {e}")
             return False
     
     return True
 
 def check_config_files():
     """設定ファイルを確認"""
-    print("\n⚙️  設定ファイルを確認中...")
+    print("\n[CHECK] Project files...")
     
     required_files = {
         'app.py': 'Flask バックエンド',
         'index.html': 'フロントエンド UI',
         'anasuro_selective.py': 'スクレイピング処理',
-        'anasuro.py': 'メインスクリプト',
+        'start_silent.bat': 'startup script',
     }
     
     all_exist = True
@@ -81,22 +81,22 @@ def check_config_files():
         path = Path(filename)
         if path.exists():
             size = path.stat().st_size
-            print(f"✓ {filename} ({description}) - {size:,} bytes")
+            print(f"[OK] {filename} ({description}) - {size:,} bytes")
         else:
-            print(f"✗ {filename} ({description}) - 見つかりません")
+            print(f"[MISSING] {filename} ({description})")
             all_exist = False
     
     return all_exist
 
 def check_store_list():
     """店舗リスト CSV を確認"""
-    print("\n📋 店舗リスト CSV を確認中...")
+    print("\n[CHECK] store_list.csv...")
     
     store_list_path = "D:/Users/Documents/python/saved_html/store_list.csv"
     
     if not os.path.exists(store_list_path):
-        print(f"✗ {store_list_path} が見つかりません")
-        print(f"  → サンプルファイルを生成しますか？ (y/n): ", end="")
+        print(f"[MISSING] {store_list_path}")
+        print("  Create a sample file? (y/n): ", end="")
         
         if input().lower() == 'y':
             create_sample_store_list()
@@ -110,19 +110,19 @@ def check_store_list():
         required_cols = {'store_name', 'store_url', 'data_directory'}
         actual_cols = set(df.columns)
         
-        print(f"✓ {store_list_path} が存在")
-        print(f"  店舗数: {len(df)}")
-        print(f"  カラム: {', '.join(df.columns)}")
+        print(f"[OK] {store_list_path} exists")
+        print(f"  Rows: {len(df)}")
+        print(f"  Columns: {', '.join(df.columns)}")
         
         if not required_cols.issubset(actual_cols):
-            print(f"⚠️  推奨カラムが不足しています")
-            print(f"   必須: {required_cols}")
-            print(f"   実際: {actual_cols}")
+            print("[WARN] Required columns are missing")
+            print(f"   Required: {required_cols}")
+            print(f"   Actual: {actual_cols}")
             return False
         
         return True
     except Exception as e:
-        print(f"✗ ファイル読み込みエラー: {e}")
+        print(f"[ERROR] Failed to read file: {e}")
         return False
 
 def create_sample_store_list():
@@ -164,28 +164,28 @@ def create_sample_store_list():
         output_path = 'D:/Users/Documents/python/saved_html/store_list.csv'
         df.to_csv(output_path, index=False, encoding='utf-8-sig')
 
-        print(f"✓ サンプルファイルを生成: {output_path}")
-        print(f"  {len(df)} 個の店舗が含まれています")
+        print(f"[OK] Sample file created: {output_path}")
+        print(f"  Rows: {len(df)}")
 
         return True
     except Exception as e:
-        print(f"✗ 生成失敗: {e}")
+        print(f"[ERROR] Failed to create sample file: {e}")
         return False
 
 def print_summary():
     """サマリーを表示"""
     print("\n" + "=" * 60)
-    print("🚀 セットアップ完了！")
+    print("Setup complete")
     print("=" * 60)
-    print("\n以下のコマンドで Web サーバーを起動できます：\n")
+    print("\nStart the web server with:\n")
     print("  python app.py\n")
-    print("その後、ブラウザで以下の URL にアクセスしてください：\n")
+    print("Then open this URL in your browser:\n")
     print("  http://localhost:5000\n")
     print("=" * 60)
 
 def main():
     print("\n" + "=" * 60)
-    print("スロット店舗スクレイピング Web UI - セットアップ")
+    print("Slot Store Scraper Web UI - Setup")
     print("=" * 60 + "\n")
     
     checks = [
@@ -201,21 +201,21 @@ def main():
             result = check_func()
             results.append((check_name, result))
         except Exception as e:
-            print(f"✗ {check_name} で予期しないエラー: {e}")
+            print(f"[ERROR] Unexpected error in {check_name}: {e}")
             results.append((check_name, False))
     
     print("\n" + "=" * 60)
-    print("チェック結果:")
+    print("Results:")
     print("=" * 60)
     for check_name, result in results:
-        status = "✓ OK" if result else "✗ NG"
+        status = "[OK]" if result else "[NG]"
         print(f"{status}: {check_name}")
     
     if all(result for _, result in results):
         print_summary()
     else:
-        print("\n⚠️  一部のチェックが失敗しました")
-        print("上記のエラーメッセージを確認して対応してください")
+        print("\n[WARN] Some checks failed")
+        print("Review the messages above and fix the reported issues")
         sys.exit(1)
 
 if __name__ == '__main__':

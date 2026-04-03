@@ -217,6 +217,71 @@
             color: #667eea;
         }
 
+        .settings-panel {
+            background: #f7f8ff;
+            border: 1px solid #d9defa;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 20px;
+        }
+
+        .settings-panel h2 {
+            font-size: 18px;
+            color: #3f51b5;
+            margin-bottom: 12px;
+        }
+
+        .settings-grid {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .settings-field label {
+            display: block;
+            font-size: 13px;
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 6px;
+        }
+
+        .settings-field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ccd3f5;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .settings-help {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+
+        .settings-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .secondary-btn {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 6px;
+            background: #3949ab;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .secondary-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .submit-btn {
             width: 100%;
             padding: 15px;
@@ -313,6 +378,31 @@
         <div class="content">
             <div id="alert" class="alert"></div>
 
+            <div class="settings-panel">
+                <h2>保存先設定</h2>
+                <div class="settings-grid">
+                    <div class="settings-field">
+                        <label for="htmlOutputDir">HTML 保存先ルート</label>
+                        <input id="htmlOutputDir" type="text" placeholder="D:\Users\Documents\python\saved_html">
+                        <div class="settings-help">各店舗の HTML はこの配下に店舗ごとのフォルダを作って保存します。</div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="csvOutputDir">CSV 出力先ルート</label>
+                        <input id="csvOutputDir" type="text" placeholder="G:\マイドライブ\machine-Excel">
+                        <div class="settings-help">整形済み CSV の出力先です。</div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="storeListPath">参照中の store_list.csv</label>
+                        <input id="storeListPath" type="text" readonly>
+                        <div class="settings-help">店舗情報の元データです。今回は表示のみです。</div>
+                    </div>
+                </div>
+                <div class="settings-actions">
+                    <button class="secondary-btn" id="saveSettingsBtn" onclick="saveSettings()">設定を保存</button>
+                    <div class="settings-help" id="tempStoreListInfo"></div>
+                </div>
+            </div>
+
             <div class="status-info">
                 選択中: <strong id="selectedCount">0</strong> / <strong id="totalCount">0</strong> 店舗
             </div>
@@ -348,10 +438,24 @@
         let selectedSet = new Set();
         let completedStores = [];   // データ更新があった店舗
         let processedStores = [];   // 処理を実行した店舗（更新なしも含む）
+        let settings = null;
+
+        async function loadSettings() {
+            const response = await fetch('/api/settings');
+            if (!response.ok) throw new Error('設定の取得に失敗しました');
+
+            settings = await response.json();
+            document.getElementById('htmlOutputDir').value = settings.html_output_dir || '';
+            document.getElementById('csvOutputDir').value = settings.csv_output_dir || '';
+            document.getElementById('storeListPath').value = settings.store_list_path || '';
+            document.getElementById('tempStoreListInfo').textContent =
+                '一時選択CSV: ' + (settings.temp_store_list_path || '');
+        }
 
         // ページロード時に店舗リストを取得
         async function loadStores() {
             try {
+                await loadSettings();
                 const response = await fetch('/api/stores');
                 if (!response.ok) throw new Error('店舗リストの取得に失敗しました');
                 
@@ -583,7 +687,7 @@
             try {
                 const saveBtn = document.getElementById('saveOrderBtn');
                 saveBtn.disabled = true;
-                const order = stores.map(s => s.directory || s.dir || '');
+                const order = stores.map(s => s.name || '');
                 const response = await fetch('/api/stores/reorder', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -598,6 +702,35 @@
                 showAlert('エラー: ' + error.message, 'error');
             } finally {
                 document.getElementById('saveOrderBtn').disabled = false;
+            }
+        }
+
+        async function saveSettings() {
+            const saveBtn = document.getElementById('saveSettingsBtn');
+            saveBtn.disabled = true;
+
+            try {
+                const payload = {
+                    html_output_dir: document.getElementById('htmlOutputDir').value.trim(),
+                    csv_output_dir: document.getElementById('csvOutputDir').value.trim()
+                };
+
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || '設定の保存に失敗しました');
+                }
+
+                showAlert(result.message || '設定を保存しました', 'success');
+                await loadStores();
+            } catch (error) {
+                showAlert('エラー: ' + error.message, 'error');
+            } finally {
+                saveBtn.disabled = false;
             }
         }
     </script>

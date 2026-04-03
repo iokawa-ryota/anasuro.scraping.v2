@@ -22,7 +22,14 @@ import contextlib
 import gc
 import sys
 import argparse
-from pathlib import Path
+import re
+
+try:
+    import winreg
+except ImportError:
+    winreg = None
+
+from config_manager import load_config
 
 # HTMLを保存（表データのみ）
 def save_html(driver, date_str, save_dir):
@@ -50,6 +57,15 @@ def detect_cloudflare(driver):
         "hcaptcha-box" in page
     )
 
+def wait_for_cloudflare_clear(driver, timeout=300, poll_interval=2):
+    """Wait until the Cloudflare challenge page disappears."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if not detect_cloudflare(driver):
+            return True
+        time.sleep(poll_interval)
+    return False
+
 def handle_vignette(driver, link_element):
     if "#google_vignette" in driver.current_url:
         print("[広告] #google_vignette 遷移検知 → 戻って再試行")
@@ -57,13 +73,39 @@ def handle_vignette(driver, link_element):
         driver.execute_script("arguments[0].scrollIntoView(true);", link_element)
         ActionChains(driver).move_to_element(link_element).pause(0.5).click().perform()
 
+def detect_chrome_major_version():
+    """Try to detect the installed Chrome major version on Windows."""
+    if winreg is not None:
+        reg_paths = [
+            (winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon"),
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\Google\Chrome\BLBeacon"),
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Google\Chrome\BLBeacon"),
+        ]
+        for hive, path in reg_paths:
+            try:
+                with winreg.OpenKey(hive, path) as key:
+                    version, _ = winreg.QueryValueEx(key, "version")
+                match = re.match(r"(\d+)\.", str(version))
+                if match:
+                    return int(match.group(1))
+            except OSError:
+                continue
+
+    chrome_path = uc.find_chrome_executable()
+    if chrome_path:
+        match = re.search(r"(\d+)\.", chrome_path)
+        if match:
+            return int(match.group(1))
+
+    return None
+
 def load_stores(source):
     """
     店舗リストを読み込む
     source: "csv" (元の store_list.csv) または "file" (temp_store_list.csv)
     """
     if source == "csv":
-        store_list_path = "D:/Users/Documents/python/saved_html/store_list.csv"
+        store_list_path = load_config()["store_list_path"]
     else:
         store_list_path = "temp_store_list.csv"
 
@@ -151,8 +193,14 @@ def main():
     options = uc.ChromeOptions()
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--start-maximized")
-    
-    driver = uc.Chrome(options=options)
+
+    chrome_major = detect_chrome_major_version()
+    if chrome_major:
+        print(f"[情報] Chrome メジャーバージョンを検出: {chrome_major}")
+        driver = uc.Chrome(options=options, version_main=chrome_major)
+    else:
+        print("[警告] Chrome バージョンを検出できなかったため自動判定で起動します")
+        driver = uc.Chrome(options=options)
     
     # 広告除去スクリプト（強化版）
     adblock_script = """
@@ -187,7 +235,12 @@ def main():
                 
                 if detect_cloudflare(driver):
                     print(f"[警告] Cloudflare 認証検知")
-                    input("[入力待ち] 認証を手動で通過してください。完了後 Enter キーを押してください。")
+                    if sys.stdin and sys.stdin.isatty():
+                        input("[入力待ち] 認証を手動で通過してください。完了後 Enter キーを押してください。")
+                    else:
+                        print("[情報] 非対話モードのため、認証解除を待機します（最大5分）")
+                        if not wait_for_cloudflare_clear(driver, timeout=300):
+                            print("[警告] Cloudflare 認証解除の待機がタイムアウトしました")
                 
                 driver.execute_script(adblock_script)
                 print("[状態] 一覧ページにアクセス完了")

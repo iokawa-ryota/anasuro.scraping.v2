@@ -4,6 +4,7 @@ import json
 
 import pandas as pd
 from bs4 import BeautifulSoup
+from config_manager import load_config, resolve_store_html_directory, sanitize_filename
 
 # tqdm のインポート（Jupyter でなければ通常の tqdm を使用）
 try:
@@ -12,7 +13,8 @@ except ImportError:
     from tqdm import tqdm
 
 # 店舗一覧の読み込み（CSV版）
-store_list_path = "D:/Users/Documents/python/saved_html/store_list.csv"
+config = load_config()
+store_list_path = config["store_list_path"]
 df = pd.read_csv(store_list_path, encoding='utf-8-sig')
 df = df.drop_duplicates(subset=["data_directory", "store_name"])  # 重複店舗を除外
 
@@ -24,7 +26,7 @@ completed_stores = []  # データ更新があった店舗
 processed_stores = []  # 処理実行した全店舗（更新なしも含む）
 
 # 出力先ディレクトリ（全店舗共通）
-excel_output_dir = r"G:\マイドライブ\machine-Excel"
+excel_output_dir = config["csv_output_dir"]
 os.makedirs(excel_output_dir, exist_ok=True)
 
 # 各店舗ディレクトリを順に処理
@@ -33,11 +35,15 @@ for i, (_, row) in enumerate(df.iterrows()):
     if i > 0:
         print("\n")
 
-    html_dir = row["data_directory"]
+    html_dir = resolve_store_html_directory(
+        row["store_name"],
+        row.get("data_directory", ""),
+        config["html_output_dir"],
+    )
     store_name = row["store_name"]
 
     # ファイル名に使えない文字を削除
-    safe_store_name = re.sub(r'[\\/*?:"<>|]', "", store_name)
+    safe_store_name = sanitize_filename(store_name)
     # 拡張子をcsvに変更
     output_path = os.path.join(excel_output_dir, f"{safe_store_name}-slotdata.csv")
 

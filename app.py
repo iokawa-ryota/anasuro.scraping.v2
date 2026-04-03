@@ -1,54 +1,76 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, request, jsonify
 import pandas as pd
 import os
 from datetime import datetime
 import subprocess
 import sys
 import json
+from config_manager import (
+    ensure_config_file,
+    load_config,
+    save_config,
+    resolve_store_html_directory,
+)
 
 app = Flask(__name__, static_folder='.')
 app.config['JSON_AS_ASCII'] = False
 
-# 設定
-# 正式な店舗リスト（絶対パス指定）
-STORE_LIST_PATH = r"D:\Users\Documents\python\saved_html\store_list.csv"
-# 選択後に一時出力するファイル（スクレイピングスクリプト参照用）
 TEMP_STORE_LIST_PATH = "temp_store_list.csv"  # ローカルの一時ファイル
 SCRAPING_SCRIPT_PATH = "anasuro_selective.py"  # スクレイピング処理メインスクリプト
+OFFLINE_FORMAT_SCRIPT_PATH = "offline-scraing.py"
 LOG_FILE = "scraping_log.json"
 
 # 店舗リストをメモリにキャッシュ
 store_cache = None
 last_load_time = None
 
+ensure_config_file()
+
+
+def get_store_list_path():
+    return load_config()["store_list_path"]
+
+
+def apply_store_paths(df, config):
+    stores = []
+    html_output_dir = config["html_output_dir"]
+
+    for i, (_, row) in enumerate(df.iterrows(), start=1):
+        name = row.get("store_name") or row.get("name") or f"店舗{i}"
+        url = row.get("store_url") or row.get("url") or ""
+        original_directory = row.get("data_directory") or row.get("directory") or ""
+        resolved_directory = resolve_store_html_directory(name, original_directory, html_output_dir)
+        stores.append({
+            "name": str(name),
+            "url": str(url),
+            "directory": str(resolved_directory),
+            "original_directory": str(original_directory),
+        })
+
+    return stores
+
 def load_stores():
     """CSV から店舗リストを読み込む（エンコーディング自動フォールバック）"""
     global store_cache, last_load_time
 
     try:
-        if not os.path.exists(STORE_LIST_PATH):
+        config = load_config()
+        store_list_path = config["store_list_path"]
+
+        if not os.path.exists(store_list_path):
             return []
 
         df = None
         for enc in ("utf-8", "utf-8-sig", "cp932"):
             try:
-                df = pd.read_csv(STORE_LIST_PATH, encoding=enc)
+                df = pd.read_csv(store_list_path, encoding=enc)
                 break
             except Exception:
                 continue
         if df is None:
             raise RuntimeError("store_list.csv の読み込みに失敗しました（encoding不一致）")
 
-        store_cache = []
-        for i, (_, row) in enumerate(df.iterrows(), start=1):
-            name = row.get("store_name") or row.get("name") or f"店舗{i}"
-            url = row.get("store_url") or row.get("url") or ""
-            directory = row.get("data_directory") or row.get("directory") or ""
-            store_cache.append({
-                "name": str(name),
-                "url": str(url),
-                "directory": str(directory)
-            })
+        store_cache = apply_store_paths(df, config)
         last_load_time = datetime.now()
         return store_cache
     except Exception as e:
@@ -69,6 +91,35 @@ def get_stores():
     """店舗リストを JSON で返す"""
     stores = load_stores()
     return jsonify(stores)
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """アプリ設定を返す"""
+    config = load_config()
+    config["temp_store_list_path"] = os.path.abspath(TEMP_STORE_LIST_PATH)
+    return jsonify(config)
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """アプリ設定を保存する"""
+    try:
+        data = request.get_json() or {}
+        next_config = {
+            "store_list_path": data.get("store_list_path") or load_config()["store_list_path"],
+            "html_output_dir": data.get("html_output_dir"),
+            "csv_output_dir": data.get("csv_output_dir"),
+        }
+        config = save_config(next_config)
+        os.makedirs(config["html_output_dir"], exist_ok=True)
+        os.makedirs(config["csv_output_dir"], exist_ok=True)
+        load_stores()
+        return jsonify({
+            "message": "設定を保存しました",
+            "settings": config,
+        })
+    except Exception as e:
+        print(f"[エラー] 設定保存失敗: {e}")
+        return jsonify({"error": f"設定保存エラー: {str(e)}"}), 500
 
 @app.route('/api/scrape', methods=['POST'])
 def start_scraping():
@@ -119,10 +170,18 @@ def start_scraping():
                 [sys.executable, SCRAPING_SCRIPT_PATH],
                 capture_output=True,
                 text=True,
-                timeout=3600  # 最大 1 時間
+                timeout=3600,  # 最大 1 時間
+                encoding='utf-8',
+                errors='replace',
             )
             
             output = result.stdout + "\n" + result.stderr
+            if result.returncode != 0:
+                return jsonify({
+                    "error": "スクレイピングの起動に失敗しました",
+                    "returncode": result.returncode,
+                    "output": output[-2000:] if output else ""
+                }), 500
             return jsonify({
                 "message": f"{len(selected_store_names)} 個の店舗のスクレイピングを実行しました",
                 "selected_count": len(selected_store_names),
@@ -176,10 +235,12 @@ def format_offline():
         # オフライン整形スクリプトを実行
         try:
             result = subprocess.run(
-                [sys.executable, "offline-scraing.py"],
+                [sys.executable, OFFLINE_FORMAT_SCRIPT_PATH],
                 capture_output=True,
                 text=True,
-                timeout=1800  # 最大 30 分
+                timeout=1800,  # 最大 30 分
+                encoding='utf-8',
+                errors='replace',
             )
             
             output = result.stdout + "\n" + result.stderr
@@ -251,9 +312,10 @@ def reorder_stores():
 
         # CSV 読み込み（エンコーディング自動フォールバック）
         df = None
+        store_list_path = get_store_list_path()
         for enc in ("utf-8", "utf-8-sig", "cp932"):
             try:
-                df = pd.read_csv(STORE_LIST_PATH, encoding=enc)
+                df = pd.read_csv(store_list_path, encoding=enc)
                 break
             except Exception:
                 continue
@@ -261,20 +323,20 @@ def reorder_stores():
             return jsonify({"error": "store_list.csv の読み込みに失敗しました"}), 500
 
         # data_directory 列の確認
-        col = 'data_directory' if 'data_directory' in df.columns else (
-            'directory' if 'directory' in df.columns else None
+        col = 'store_name' if 'store_name' in df.columns else (
+            'name' if 'name' in df.columns else None
         )
         if col is None:
-            return jsonify({"error": "CSVに data_directory 列がありません"}), 400
+            return jsonify({"error": "CSVに store_name 列がありません"}), 400
 
         # 既存順序を保持するためのインデックス列
         df['__orig_index__'] = range(len(df))
 
         # 指定順序に基づいて並び替え（存在するもののみ）
-        dir_to_index = {str(row[col]): idx for idx, (_, row) in enumerate(df.iterrows())}
+        name_to_index = {str(row[col]): idx for idx, (_, row) in enumerate(df.iterrows())}
         ordered_indices = []
-        for d in order:
-            idx = dir_to_index.get(str(d))
+        for name in order:
+            idx = name_to_index.get(str(name))
             if idx is not None:
                 ordered_indices.append(idx)
 
@@ -285,7 +347,7 @@ def reorder_stores():
         df = df.iloc[final_indices].drop(columns=['__orig_index__'])
 
         # UTF-8 BOMで保存（Excel向け）
-        df.to_csv(STORE_LIST_PATH, index=False, encoding='utf-8-sig')
+        df.to_csv(store_list_path, index=False, encoding='utf-8-sig')
 
         # キャッシュ更新
         load_stores()

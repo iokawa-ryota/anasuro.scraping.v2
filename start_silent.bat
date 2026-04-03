@@ -1,15 +1,14 @@
 @echo off
-REM slot machine start script
-REM run Flask 
+REM Start Flask app and open browser
 
-echo Flask server is starting...
+echo Starting Flask server...
 
 start "Flask Server" /min python app.py
 
-REM wait for server to start
+REM Wait for server startup
 timeout /t 3 /nobreak
 
-REM open browser
+REM Open browser
 start http://localhost:5000
 
 exit
