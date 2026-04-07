@@ -4,7 +4,7 @@
 使い方:
   python anasuro_selective.py <店舗名1> <店舗名2> ...
   または
-  python anasuro_selective.py --file temp_store_list.csv
+  python anasuro_selective.py --file runtime/temp_store_list.csv
 
 このスクリプトは、app.py（Flask バックエンド）から呼び出されます。
 選択された店舗のみに対して処理を行います。
@@ -23,6 +23,7 @@ import gc
 import sys
 import argparse
 import re
+from pathlib import Path
 
 try:
     import winreg
@@ -30,6 +31,11 @@ except ImportError:
     winreg = None
 
 from config_manager import load_config
+from services.store_repository import normalize_store_dataframe
+
+BASE_DIR = Path(__file__).resolve().parent
+RUNTIME_DIR = BASE_DIR / "runtime"
+TEMP_STORE_LIST_PATH = RUNTIME_DIR / "temp_store_list.csv"
 
 # HTMLを保存（表データのみ）
 def save_html(driver, date_str, save_dir):
@@ -102,12 +108,12 @@ def detect_chrome_major_version():
 def load_stores(source):
     """
     店舗リストを読み込む
-    source: "csv" (元の store_list.csv) または "file" (temp_store_list.csv)
+    source: "csv" (元の store_list.csv) または "file" (runtime/temp_store_list.csv)
     """
     if source == "csv":
         store_list_path = load_config()["store_list_path"]
     else:
-        store_list_path = "temp_store_list.csv"
+        store_list_path = TEMP_STORE_LIST_PATH
 
     if not os.path.exists(store_list_path):
         print(f"[エラー] ファイルが見つかりません: {store_list_path}")
@@ -123,6 +129,7 @@ def load_stores(source):
                 continue
         if df is None:
             raise RuntimeError("店舗CSVの読み込みに失敗（encoding不一致）")
+        df = normalize_store_dataframe(df)
         print(f"[情報] {len(df)} 個の店舗を読み込みました")
         return df
     except Exception as e:
@@ -154,7 +161,8 @@ def main():
     # コマンドライン引数を処理
     parser = argparse.ArgumentParser(description='選択された店舗のみをスクレイピング')
     parser.add_argument('--file', type=str, help='店舗リスト Excel ファイルを指定')
-    parser.add_argument('--use-temp', action='store_true', help='temp_store_list.csv を使用')
+    parser.add_argument('--use-temp', action='store_true', help='runtime/temp_store_list.csv を使用')
+    parser.add_argument('--recent-days', type=int, default=0, help='直近何日分だけ取得するか')
     parser.add_argument('stores', nargs='*', help='店舗名（複数可）')
     
     args = parser.parse_args()
@@ -173,13 +181,13 @@ def main():
             print("[エラー] 指定ファイルの読み込みに失敗しました")
             return
     elif args.use_temp:
-        print("[情報] temp_store_list.csv を使用します")
-        df = load_stores("temp")
+        print(f"[情報] {TEMP_STORE_LIST_PATH} を使用します")
+        df = load_stores("file")
     else:
-        # デフォルト: temp_store_list.csv を確認、なければ store_list.csv を使用
-        if os.path.exists("temp_store_list.csv"):
-            print("[情報] temp_store_list.csv が見つかりました")
-            df = load_stores("temp")
+        # デフォルト: runtime/temp_store_list.csv を確認、なければ store_list.csv を使用
+        if TEMP_STORE_LIST_PATH.exists():
+            print(f"[情報] {TEMP_STORE_LIST_PATH} が見つかりました")
+            df = load_stores("file")
         else:
             print("[情報] 元の store_list.csv を使用します")
             df = load_stores("csv")
@@ -258,6 +266,10 @@ def main():
                     except:
                         continue
                 
+                if args.recent_days > 0:
+                    date_list = date_list[:args.recent_days]
+                    print(f"  テストモード: 直近 {args.recent_days} 日分に制限")
+
                 print(f"  新規データ日数: {len(date_list)} 件")
                 
                 for date_str in date_list:

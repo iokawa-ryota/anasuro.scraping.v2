@@ -49,7 +49,8 @@ options = uc.ChromeOptions()
 options.add_argument("--disable-blink-features=AutomationControlled")
 options.add_argument("--start-maximized")
 
-driver = uc.Chrome(options=options)
+CHROME_VERSION_MAIN = 144
+driver = uc.Chrome(options=options, version_main=CHROME_VERSION_MAIN)
 
 # 広告除去スクリプト（強化版）
 adblock_script = """

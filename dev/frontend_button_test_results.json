@@ -1,0 +1,42 @@
+[
+  {
+    "name": "保存先設定プルダウン初期状態",
+    "status": "passed",
+    "detail": "closed by default"
+  },
+  {
+    "name": "保存先設定プルダウン展開",
+    "status": "passed",
+    "detail": "opened on click"
+  },
+  {
+    "name": "全選択ボタン",
+    "status": "passed",
+    "detail": "16/16 selected"
+  },
+  {
+    "name": "全解除ボタン",
+    "status": "passed",
+    "detail": "0 selected after clear"
+  },
+  {
+    "name": "設定を保存ボタン",
+    "status": "passed",
+    "detail": "設定を保存しました"
+  },
+  {
+    "name": "並び順を保存ボタン",
+    "status": "passed",
+    "detail": "並び順を保存しました（16 件を並べ替え）"
+  },
+  {
+    "name": "Excel自動整形ボタン",
+    "status": "passed",
+    "detail": "Excel 自動整形を実行しました"
+  },
+  {
+    "name": "スクレイピング開始ボタン",
+    "status": "failed",
+    "detail": "エラー: スクレイピングの起動に失敗しました"
+  }
+]

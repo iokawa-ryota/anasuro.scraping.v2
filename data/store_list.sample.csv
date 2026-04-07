@@ -1,0 +1,3 @@
+store_name,store_url,data_directory,last_update
+店舗A - サンプル,https://example.com/store-a,data\saved_html\店舗A-サンプル,
+店舗B - サンプル,https://example.com/store-b,data\saved_html\店舗B-サンプル,

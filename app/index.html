@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スロット店舗スクレイピング</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>スロット店舗スクレイピング</h1>
+            <p>店舗選択、保存先設定、実行ログをまとめて管理できます</p>
+        </header>
+
+        <main class="content">
+            <div id="alert" class="alert"></div>
+
+            <div class="workspace">
+                <aside class="sidebar">
+                    <details class="panel accent-panel">
+                        <summary class="panel-summary">
+                            <h2>店舗追加</h2>
+                        </summary>
+                        <div class="panel-body">
+                            <div class="form-grid">
+                                <label class="field">
+                                    <span>店舗名</span>
+                                    <input id="newStoreName" type="text" placeholder="例: 新規店舗">
+                                </label>
+                                <label class="field">
+                                    <span>店舗URL</span>
+                                    <input id="newStoreUrl" type="text" placeholder="https://example.com/store">
+                                </label>
+                                <button class="secondary-btn" id="addStoreBtn" type="button">追加</button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="panel">
+                        <summary class="panel-summary">
+                            <h2>保存先設定</h2>
+                        </summary>
+                        <div class="panel-body">
+                            <div class="form-grid">
+                                <label class="field">
+                                    <span>HTML 保存先ルート</span>
+                                    <input id="htmlOutputDir" type="text">
+                                </label>
+                                <label class="field">
+                                    <span>CSV 出力先ルート</span>
+                                    <input id="csvOutputDir" type="text">
+                                </label>
+                                <label class="field">
+                                    <span>参照中の store_list.csv</span>
+                                    <input id="storeListPath" type="text" readonly>
+                                </label>
+                                <div class="help-text" id="tempStoreListInfo"></div>
+                                <button class="secondary-btn" id="saveSettingsBtn" type="button">設定を保存</button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <section class="status-card">
+                        <div>選択中: <strong id="selectedCount">0</strong> / <strong id="totalCount">0</strong> 店舗</div>
+                        <div id="jobStatusSummary">ジョブ待機中</div>
+                    </section>
+
+                    <section class="toggle-card">
+                        <div class="toggle-copy">
+                            <strong>テストスクレイピング</strong>
+                            <span>ON のときは直近3日分だけ取得します</span>
+                        </div>
+                        <label class="switch" for="testModeToggle">
+                            <input id="testModeToggle" type="checkbox">
+                            <span class="switch-slider"></span>
+                        </label>
+                    </section>
+
+                    <div class="control-panel">
+                        <button class="control-btn select-all-btn" id="selectAllBtn" type="button">全選択</button>
+                        <button class="control-btn clear-all-btn" id="clearAllBtn" type="button">全解除</button>
+                    </div>
+
+                    <div class="action-panel">
+                        <button class="submit-btn" id="submitBtn" type="button">スクレイピングを開始</button>
+                        <button class="submit-btn format-btn" id="formatBtn" type="button">Excel 自動整形を実行</button>
+                        <button class="submit-btn" id="saveOrderBtn" type="button">並び順を保存（CSV反映）</button>
+                    </div>
+                </aside>
+
+                <section class="main-panel">
+                    <div id="loading" class="loading">
+                        <div class="spinner"></div>
+                        <div>
+                            <div id="loadingText">処理を実行中...</div>
+                            <div class="job-meta" id="jobMeta"></div>
+                        </div>
+                    </div>
+
+                    <div class="main-tabs">
+                        <button class="tab-btn active" id="storesTabBtn" type="button">店舗一覧</button>
+                        <button class="tab-btn" id="logsTabBtn" type="button">実行ログ</button>
+                    </div>
+
+                    <div class="tab-panel active" id="storesPanel">
+                        <div id="storeListContainer" class="store-list"></div>
+                    </div>
+
+                    <div class="tab-panel" id="logsPanel">
+                        <div class="log-panel">
+                            <div class="log-meta">
+                                <div>
+                                    <div class="log-title" id="logTitle">実行ログ</div>
+                                    <div class="job-meta" id="logMeta">まだジョブは実行されていません。</div>
+                                </div>
+                                <div class="log-status" id="logStatus">待機中</div>
+                            </div>
+                            <pre class="log-output" id="logOutput">まだ実行ログはありません。</pre>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

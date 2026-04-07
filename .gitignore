@@ -1,2 +1,10 @@
-# Ignore local Chrome profile data
+# Ignore local runtime data
 chrome_profile/
+app/runtime/
+__pycache__/
+app/__pycache__/
+dev/__pycache__/
+*.pyc
+data/store_list.csv
+data/saved_html/
+data/machine_csv/
